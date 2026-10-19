@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <meta name="description" content="Attendance Management – Mark and track daily attendance for students and teachers."/>
+  <title>Attendance – Muslim Model School Khaddi</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="css/style.css"/>
+</head>
+<body>
+<div class="app-layout" id="appLayout"></div>
+<div id="toastContainer" class="toast-container"></div>
+
+<script src="js/data.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/app.js"></script>
+<script>
+const session = Auth.requireAuth();
+if (session) {
+  document.getElementById('appLayout').innerHTML = buildSidebar() + `
+  <div class="main-content">
+    ${buildHeader('Attendance Management')}
+    <div class="page-content" id="pageContent"></div>
+  </div>`;
+  setupLayout('attendance');
+  renderAttendancePage();
+}
+
+let attType = 'student';
+let attDate = today();
+let attClass = '10-A';
+
+function renderAttendancePage() {
+  document.getElementById('pageContent').innerHTML = `
+  <div class="page-header">
+    <div class="page-header-left">
+      <p class="breadcrumb">Home / <span>Attendance</span></p>
+      <h2>Attendance Management</h2>
+      <p>Mark and monitor daily attendance for students and teachers.</p>
+    </div>
+    <button class="btn btn-outline" onclick="generateReport()"><i class="fas fa-file-alt"></i> Monthly Report</button>
+  </div>
+
+  <!-- QUICK STATS -->
+  <div class="stat-cards" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin-bottom:20px">
+    <div class="stat-card"><div class="stat-icon green"><i class="fas fa-user-check"></i></div>
+      <div class="stat-info"><div class="stat-number" id="statPresent">–</div><div class="stat-label">Present Today</div></div></div>
+    <div class="stat-card"><div class="stat-icon red"><i class="fas fa-user-times"></i></div>
+      <div class="stat-info"><div class="stat-number" id="statAbsent">–</div><div class="stat-label">Absent Today</div></div></div>
+    <div class="stat-card"><div class="stat-icon orange"><i class="fas fa-user-clock"></i></div>
+      <div class="stat-info"><div class="stat-number" id="statLeave">–</div><div class="stat-label">On Leave</div></div></div>
+    <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-percent"></i></div>
+      <div class="stat-info"><div class="stat-number" id="statRate">–</div><div class="stat-label">Attendance Rate</div></div></div>
+  </div>
+
+  <div class="grid-2">
+    <!-- MARK ATTENDANCE -->
+    <div class="card">
+      <div class="card-header">
+        <h3><i class="fas fa-calendar-check"></i> Mark Attendance</h3>
+      </div>
+      <div class="card-body">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Date <span class="required">*</span></label>
+            <input type="date" class="form-control" id="attDate" value="${today()}" onchange="attDate=this.value;loadAttendanceList()"/>
+          </div>
+          <div class="form-group">
+            <label>Type</label>
+            <select class="form-control" id="attType" onchange="attType=this.value;loadAttendanceList()">
+              <option value="student">Students</option>
+              <option value="teacher">Teachers</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group" id="classSelectWrap">
+          <label>Class</label>
+          <select class="form-control" id="attClass" onchange="attClass=this.value;loadAttendanceList()">
+            <option>10-A</option><option>9-B</option><option>8-A</option>
+            <option>7-A</option><option>6-A</option><option>6-B</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+          <button class="btn btn-success btn-sm" onclick="markAll('present')"><i class="fas fa-check-double"></i> All Present</button>
+          <button class="btn btn-danger btn-sm" onclick="markAll('absent')"><i class="fas fa-times"></i> All Absent</button>
+          <button class="btn btn-warning btn-sm" onclick="markAll('leave')"><i class="fas fa-clock"></i> All Leave</button>
+        </div>
+        <div id="attendanceList" style="max-height:400px;overflow-y:auto"></div>
+        <div class="form-actions" style="margin-top:12px">
+          <button class="btn btn-primary" onclick="saveAttendance()"><i class="fas fa-save"></i> Save Attendance</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ATTENDANCE CALENDAR -->
+    <div class="card">
+      <div class="card-header">
+        <h3><i class="fas fa-calendar-alt"></i> October 2026 Overview</h3>
+      </div>
+      <div class="card-body">
+        <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+          <span class="badge badge-success"><span style="width:8px;height:8px;border-radius:50%;background:var(--success);display:inline-block;margin-right:4px"></span>Present</span>
+          <span class="badge badge-danger"><span style="width:8px;height:8px;border-radius:50%;background:var(--danger);display:inline-block;margin-right:4px"></span>Absent</span>
+          <span class="badge badge-warning"><span style="width:8px;height:8px;border-radius:50%;background:var(--warning);display:inline-block;margin-right:4px"></span>Leave</span>
+          <span class="badge badge-gray"><span style="width:8px;height:8px;border-radius:50%;background:var(--border);display:inline-block;margin-right:4px"></span>Holiday</span>
+        </div>
+        <div id="calendarWrap"></div>
+        <div id="reportTable" style="margin-top:16px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ATTENDANCE HISTORY TABLE -->
+  <div class="card" style="margin-top:20px">
+    <div class="card-header">
+      <h3><i class="fas fa-history"></i> Attendance History</h3>
+      <button class="btn btn-outline btn-sm" onclick="printSection('attHistoryTable')"><i class="fas fa-print"></i> Print</button>
+    </div>
+    <div id="attHistoryTable">
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>Date</th><th>Name</th><th>Type</th><th>Class</th><th>Status</th></tr></thead>
+          <tbody id="attHistoryBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>`;
+
+  loadAttendanceList();
+  renderCalendar();
+  renderAttHistory();
+  updateStats();
+}
+
+let tempAttendance = {};
+
+function loadAttendanceList() {
+  tempAttendance = {};
+  const typeEl = document.getElementById('attType');
+  const classEl = document.getElementById('classSelectWrap');
+  if (typeEl.value === 'teacher') classEl.style.display = 'none';
+  else classEl.style.display = 'block';
+
+  const cls = document.getElementById('attClass').value;
+  const type = document.getElementById('attType').value;
+  const dateVal = document.getElementById('attDate').value;
+
+  let entities;
+  if (type === 'student') {
+    entities = DB.find('students', s => s.class === cls && s.status === 'active');
+  } else {
+    entities = DB.get('teachers').filter(t => t.status === 'active');
+  }
+
+  // Load existing records for this date
+  const existing = DB.find('attendance', a => a.date === dateVal && a.type === type);
+  existing.forEach(a => { tempAttendance[a.entityId] = a.status; });
+
+  const list = document.getElementById('attendanceList');
+  if (!list) return;
+  if (entities.length === 0) {
+    list.innerHTML = '<div class="empty-state"><i class="fas fa-users-slash"></i><h4>No records found</h4></div>';
+    return;
+  }
+  list.innerHTML = entities.map(e => {
+    const status = tempAttendance[e.id] || 'present';
+    tempAttendance[e.id] = status;
+    return `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)" id="row_${e.id}">
+      <div class="entity-cell">
+        <div class="avatar" style="background:${strColor(e.name)};color:#fff;width:34px;height:34px;font-size:12px">${avatarInitials(e.name)}</div>
+        <div><div style="font-weight:600;font-size:13px">${e.name}</div><div style="font-size:11px;color:var(--text-light)">${type==='student'?'Roll: '+e.rollNo:e.subject}</div></div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="att-btn ${status==='present'?'att-btn-active-p':''}" data-id="${e.id}" data-status="present" onclick="setStatus('${e.id}','present',this)" style="padding:5px 10px;border-radius:50px;border:1.5px solid var(--border);background:${status==='present'?'var(--success)':'transparent'};color:${status==='present'?'#fff':'var(--text-mid)'};font-size:11px;font-weight:600;cursor:pointer;transition:.15s">P</button>
+        <button class="att-btn" data-id="${e.id}" data-status="absent" onclick="setStatus('${e.id}','absent',this)" style="padding:5px 10px;border-radius:50px;border:1.5px solid var(--border);background:${status==='absent'?'var(--danger)':'transparent'};color:${status==='absent'?'#fff':'var(--text-mid)'};font-size:11px;font-weight:600;cursor:pointer;transition:.15s">A</button>
+        <button class="att-btn" data-id="${e.id}" data-status="leave" onclick="setStatus('${e.id}','leave',this)" style="padding:5px 10px;border-radius:50px;border:1.5px solid var(--border);background:${status==='leave'?'var(--warning)':'transparent'};color:${status==='leave'?'#fff':'var(--text-mid)'};font-size:11px;font-weight:600;cursor:pointer;transition:.15s">L</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  updateStats();
+}
+
+function setStatus(id, status, btn) {
+  tempAttendance[id] = status;
+  const row = btn.closest('[id^="row_"]') || btn.parentElement;
+  const btns = row.querySelectorAll('button');
+  const colors = { present:'var(--success)', absent:'var(--danger)', leave:'var(--warning)' };
+  btns.forEach(b => {
+    const s = b.getAttribute('onclick').match(/'([^']+)'\s*,\s*this/)?.[0].split("'")[1];
+    if (b.dataset.status === status) {
+      b.style.background = colors[status];
+      b.style.color = '#fff';
+      b.style.borderColor = colors[status];
+    } else {
+      b.style.background = 'transparent';
+      b.style.color = 'var(--text-mid)';
+      b.style.borderColor = 'var(--border)';
+    }
+  });
+  updateStats();
+}
+
+function markAll(status) {
+  Object.keys(tempAttendance).forEach(id => { tempAttendance[id] = status; });
+  loadAttendanceList();
+}
+
+function saveAttendance() {
+  const dateVal = document.getElementById('attDate').value;
+  const type = document.getElementById('attType').value;
+  if (!dateVal) { showToast('Please select a date.', 'warning'); return; }
+
+  // Remove existing records for this date + type
+  const existing = DB.find('attendance', a => a.date === dateVal && a.type === type);
+  existing.forEach(a => DB.delete('attendance', a.id));
+
+  // Save new records
+  Object.entries(tempAttendance).forEach(([entityId, status]) => {
+    DB.add('attendance', { id: DB.generateId('A'), date: dateVal, type, entityId, status });
+  });
+
+  const total = Object.keys(tempAttendance).length;
+  const present = Object.values(tempAttendance).filter(s=>s==='present').length;
+  DB.add('activities', { id: DB.generateId('AC'), title: `Attendance marked for ${type}s (${present}/${total} present)`, time: 'Just now', icon:'calendar-check', color:'#f59e0b' });
+
+  showToast('Attendance saved successfully!', 'success');
+  renderAttHistory();
+  updateStats();
+  renderCalendar();
+}
+
+function updateStats() {
+  const dateVal = document.getElementById('attDate') ? document.getElementById('attDate').value : today();
+  const type    = document.getElementById('attType') ? document.getElementById('attType').value : 'student';
+  const recs    = DB.find('attendance', a => a.date === dateVal && a.type === type);
+  const p = recs.filter(a=>a.status==='present').length;
+  const ab= recs.filter(a=>a.status==='absent').length;
+  const l = recs.filter(a=>a.status==='leave').length;
+  const total = p+ab+l;
+  const rate = total > 0 ? Math.round((p/total)*100) : 0;
+  const setEl = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
+  setEl('statPresent', p);
+  setEl('statAbsent', ab);
+  setEl('statLeave', l);
+  setEl('statRate', rate+'%');
+}
+
+function renderCalendar() {
+  const days = Array.from({length:31},(_, i)=>i+1);
+  const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const wrap = document.getElementById('calendarWrap');
+  if (!wrap) return;
+
+  const allAtt = DB.find('attendance', a => a.type==='student' && a.date.startsWith('2026-10'));
+
+  const dayOfWeek = new Date('2026-10-01').getDay(); // Thursday = 4
+
+  wrap.innerHTML = `
+  <div class="att-grid">
+    ${dayNames.map(d=>`<div class="att-day-header">${d}</div>`).join('')}
+    ${Array(dayOfWeek).fill('<div class="att-day empty"></div>').join('')}
+    ${days.map(d => {
+      const dateStr = `2026-10-${String(d).padStart(2,'0')}`;
+      const recs = allAtt.filter(a => a.date === dateStr);
+      const isWeekend = (d + dayOfWeek - 1) % 7 >= 5;
+      const p = recs.filter(a=>a.status==='present').length;
+      const ab= recs.filter(a=>a.status==='absent').length;
+      const isToday = dateStr === today();
+      let cls = isWeekend ? 'holiday' : recs.length === 0 ? '' : p >= ab ? 'present' : 'absent';
+      return `<div class="att-day ${cls}" title="${dateStr}" style="${isToday?'border:2px solid var(--primary);':''}font-weight:${isToday?700:400}">${d}</div>`;
+    }).join('')}
+  </div>`;
+}
+
+function renderAttHistory() {
+  const history = DB.get('attendance').slice(-20).reverse();
+  const tbody = document.getElementById('attHistoryBody');
+  if (!tbody) return;
+  if (history.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-light)">No records yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = history.map(a => {
+    const entity = a.type === 'student'
+      ? DB.findOne('students', s=>s.id===a.entityId)
+      : DB.findOne('teachers', t=>t.id===a.entityId);
+    const name = entity ? entity.name : a.entityId;
+    const cls  = entity && a.type==='student' ? entity.class : (entity ? entity.subject : '–');
+    return `<tr>
+      <td>${formatDate(a.date)}</td>
+      <td><strong>${name}</strong></td>
+      <td><span class="badge badge-${a.type==='student'?'primary':'purple'}">${a.type}</span></td>
+      <td>${cls}</td>
+      <td><span class="badge ${a.status==='present'?'badge-success':a.status==='absent'?'badge-danger':'badge-warning'}">${a.status}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function generateReport() {
+  const attendance = DB.find('attendance', a => a.type==='student' && a.date.startsWith('2026-10'));
+  const students = DB.get('students');
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><title>Monthly Attendance Report – October 2026</title>
+  <style>body{font-family:Arial,sans-serif;padding:30px}h2{color:#1a56db}table{width:100%;border-collapse:collapse;margin-top:20px}
+  th{background:#1a56db;color:#fff;padding:10px;text-align:left}td{padding:10px;border-bottom:1px solid #e2e8f0}
+  .present{color:green}  .absent{color:red}  .leave{color:orange}
+  </style></head><body>
+  <h2>Muslim Model School Khaddi</h2>
+  <h3>Monthly Attendance Report – October 2026</h3>
+  <table><thead><tr><th>Roll No</th><th>Name</th><th>Class</th><th>Present</th><th>Absent</th><th>Leave</th><th>Rate</th></tr></thead>
+  <tbody>${students.map(s=>{
+    const recs = attendance.filter(a=>a.entityId===s.id);
+    const p=recs.filter(a=>a.status==='present').length, ab=recs.filter(a=>a.status==='absent').length, l=recs.filter(a=>a.status==='leave').length, total=p+ab+l;
+    return `<tr><td>${s.rollNo}</td><td>${s.name}</td><td>${s.class}</td><td class="present">${p}</td><td class="absent">${ab}</td><td class="leave">${l}</td><td>${total>0?Math.round((p/total)*100):0}%</td></tr>`;
+  }).join('')}</tbody></table>
+  <p style="margin-top:20px;color:gray;font-size:12px">Generated on ${new Date().toLocaleDateString()}</p>
+  </body></html>`);
+  win.document.close();
+  win.print();
+}
+
+function strColor(str) {
+  const colors = ['#1a56db','#10b981','#8b5cf6','#f59e0b','#ec4899','#06b6d4','#ef4444'];
+  let h = 0;
+  for (let c of str) h = c.charCodeAt(0) + ((h<<5)-h);
+  return colors[Math.abs(h) % colors.length];
+}
+</script>
+</body>
+</html>

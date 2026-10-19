@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <meta name="description" content="Exams & Results – Create exams, enter marks, calculate grades, and print report cards."/>
+  <title>Exams & Results – Muslim Model School Khaddi</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="css/style.css"/>
+</head>
+<body>
+<div class="app-layout" id="appLayout"></div>
+<div id="toastContainer" class="toast-container"></div>
+
+<!-- ADD EXAM MODAL -->
+<div class="modal-overlay" id="examModal" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <h3><i class="fas fa-graduation-cap"></i> Create Exam</h3>
+      <button class="modal-close" onclick="closeModal('examModal')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <form id="examForm" onsubmit="saveExam(event)">
+        <div class="form-group">
+          <label>Exam Name <span class="required">*</span></label>
+          <input type="text" class="form-control" id="ef_name" placeholder="e.g., Mid-Term Exam 2026" required/>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Class <span class="required">*</span></label>
+            <select class="form-control" id="ef_class" required>
+              <option value="">Select Class</option>
+              <option>10-A</option><option>9-B</option><option>8-A</option>
+              <option>7-A</option><option>6-A</option><option>6-B</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Subject <span class="required">*</span></label>
+            <select class="form-control" id="ef_subject" required>
+              <option value="">Select Subject</option>
+              <option>Mathematics</option><option>English</option><option>Physics</option>
+              <option>Chemistry</option><option>Biology</option><option>Computer Science</option>
+              <option>Urdu</option><option>Islamiat</option><option>Pakistan Studies</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Exam Date</label>
+            <input type="date" class="form-control" id="ef_date"/>
+          </div>
+          <div class="form-group">
+            <label>Total Marks <span class="required">*</span></label>
+            <input type="number" class="form-control" id="ef_total" value="100" required/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Pass Marks</label>
+          <input type="number" class="form-control" id="ef_pass" value="40"/>
+        </div>
+        <input type="hidden" id="ef_id"/>
+        <div class="form-actions">
+          <button type="button" class="btn btn-outline" onclick="closeModal('examModal')">Cancel</button>
+          <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Create Exam</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ENTER MARKS MODAL -->
+<div class="modal-overlay" id="marksModal" style="display:none">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h3><i class="fas fa-edit"></i> Enter Marks</h3>
+      <button class="modal-close" onclick="closeModal('marksModal')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body" id="marksContent"></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('marksModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveMarks()"><i class="fas fa-save"></i> Save Results</button>
+    </div>
+  </div>
+</div>
+
+<!-- REPORT CARD MODAL -->
+<div class="modal-overlay" id="reportCardModal" style="display:none">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h3><i class="fas fa-id-card"></i> Student Report Card</h3>
+      <button class="modal-close" onclick="closeModal('reportCardModal')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body" id="reportCardContent"></div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="printSection('reportCardContent')"><i class="fas fa-print"></i> Print Report Card</button>
+      <button class="btn btn-outline" onclick="closeModal('reportCardModal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/app.js"></script>
+<script>
+const session = Auth.requireAuth();
+if (session) {
+  document.getElementById('appLayout').innerHTML = buildSidebar() + `
+  <div class="main-content">
+    ${buildHeader('Exams & Results')}
+    <div class="page-content" id="pageContent"></div>
+  </div>`;
+  setupLayout('exams');
+  renderExamsPage();
+}
+
+let currentExamId = null;
+let marksData = {};
+
+function renderExamsPage() {
+  const exams   = DB.get('exams');
+  const results = DB.get('results');
+
+  document.getElementById('pageContent').innerHTML = `
+  <div class="page-header">
+    <div class="page-header-left">
+      <p class="breadcrumb">Home / <span>Exams & Results</span></p>
+      <h2>Examinations & Results</h2>
+      <p>Create exams, enter student marks, and generate report cards.</p>
+    </div>
+    ${Auth.isAdmin() || Auth.isTeacher() ? `<button class="btn btn-primary" onclick="openModal('examModal')"><i class="fas fa-plus"></i> Create Exam</button>` : ''}
+  </div>
+
+  <div class="stat-cards" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+    <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-file-alt"></i></div>
+      <div class="stat-info"><div class="stat-number">${exams.length}</div><div class="stat-label">Total Exams</div></div></div>
+    <div class="stat-card"><div class="stat-icon green"><i class="fas fa-chart-line"></i></div>
+      <div class="stat-info"><div class="stat-number">${results.length}</div><div class="stat-label">Results Entered</div></div></div>
+    <div class="stat-card"><div class="stat-icon orange"><i class="fas fa-star"></i></div>
+      <div class="stat-info">
+        <div class="stat-number">${results.length>0?Math.round(results.reduce((s,r)=>s+r.obtainedMarks,0)/results.length):0}%</div>
+        <div class="stat-label">Avg Score</div></div></div>
+    <div class="stat-card"><div class="stat-icon purple"><i class="fas fa-trophy"></i></div>
+      <div class="stat-info"><div class="stat-number">${results.filter(r=>r.grade==='A+'||r.grade==='A').length}</div>
+        <div class="stat-label">A-Grade Students</div></div></div>
+  </div>
+
+  <!-- EXAMS LIST -->
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-header">
+      <h3><i class="fas fa-clipboard-list"></i> Exam Schedule</h3>
+    </div>
+    <div class="table-wrapper">
+      <table>
+        <thead><tr><th>#</th><th>Exam Name</th><th>Class</th><th>Subject</th><th>Date</th><th>Total Marks</th><th>Pass Marks</th><th>Results</th><th>Actions</th></tr></thead>
+        <tbody>${exams.map((ex,i)=>{
+          const exResults = results.filter(r=>r.examId===ex.id);
+          return `<tr>
+            <td style="color:var(--text-light)">${i+1}</td>
+            <td><strong>${ex.name}</strong></td>
+            <td><span class="badge badge-primary">${ex.class}</span></td>
+            <td><span class="badge badge-purple">${ex.subject}</span></td>
+            <td>${formatDate(ex.date)}</td>
+            <td>${ex.totalMarks}</td>
+            <td>${ex.passMark}</td>
+            <td><span class="badge ${exResults.length>0?'badge-success':'badge-gray'}">${exResults.length} entered</span></td>
+            <td><div class="td-actions">
+              ${Auth.isAdmin()||Auth.isTeacher()?`<button class="btn btn-outline btn-sm" onclick="openEnterMarks('${ex.id}')"><i class="fas fa-edit"></i> Enter Marks</button>`:''}
+              ${Auth.isAdmin()?`<button class="btn btn-danger btn-icon btn-sm" onclick="deleteExam('${ex.id}','${ex.name}')"><i class="fas fa-trash"></i></button>`:''}
+            </div></td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- RESULTS TABLE -->
+  <div class="card">
+    <div class="card-header">
+      <h3><i class="fas fa-chart-bar"></i> All Results</h3>
+    </div>
+    <div class="card-body" style="padding-bottom:0">
+      <div class="search-bar-row">
+        <div class="search-input-wrap">
+          <i class="fas fa-search"></i>
+          <input type="text" id="resultSearch" placeholder="Search student, subject..." oninput="filterResults()"/>
+        </div>
+        <select class="form-control" style="width:160px" id="resultClassFilter" onchange="filterResults()">
+          <option value="">All Classes</option>
+          <option>10-A</option><option>9-B</option><option>8-A</option>
+        </select>
+      </div>
+    </div>
+    <div class="table-wrapper">
+      <table>
+        <thead><tr><th>#</th><th>Student</th><th>Exam</th><th>Subject</th><th>Marks Obtained</th><th>Percentage</th><th>Grade</th><th>Remarks</th><th>Action</th></tr></thead>
+        <tbody id="resultsBody"></tbody>
+      </table>
+    </div>
+  </div>`;
+
+  renderResultsTable();
+}
+
+function filterResults() {
+  renderResultsTable();
+}
+
+function renderResultsTable() {
+  let results = DB.get('results');
+  const q = document.getElementById('resultSearch')?.value.toLowerCase() || '';
+  const cf = document.getElementById('resultClassFilter')?.value || '';
+  if (q) results = results.filter(r =>
+    r.studentName.toLowerCase().includes(q) ||
+    (DB.findOne('exams',e=>e.id===r.examId)?.subject||'').toLowerCase().includes(q)
+  );
+  if (cf) {
+    results = results.filter(r=>{
+      const ex = DB.findOne('exams',e=>e.id===r.examId);
+      return ex && ex.class===cf;
+    });
+  }
+
+  const tbody = document.getElementById('resultsBody');
+  if (!tbody) return;
+  if (results.length===0) {
+    tbody.innerHTML='<tr><td colspan="9"><div class="empty-state"><i class="fas fa-clipboard"></i><h4>No results found</h4></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = results.map((r,i)=>{
+    const ex = DB.findOne('exams',e=>e.id===r.examId);
+    const pct = ex ? Math.round((r.obtainedMarks/ex.totalMarks)*100) : 0;
+    const gradeColors = {'A+':'badge-success','A':'badge-success','B+':'badge-primary','B':'badge-primary','C':'badge-warning','D':'badge-warning','F':'badge-danger'};
+    return `<tr>
+      <td style="color:var(--text-light)">${i+1}</td>
+      <td><strong>${r.studentName}</strong></td>
+      <td>${ex?ex.name:'–'}</td>
+      <td><span class="badge badge-purple">${ex?ex.subject:'–'}</span></td>
+      <td><strong>${r.obtainedMarks}</strong>/${ex?ex.totalMarks:100}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="progress-bar-wrap" style="width:70px">
+            <div class="progress-bar ${pct>=60?'green':'red'}" style="width:${pct}%"></div>
+          </div>
+          <span style="font-size:12px">${pct}%</span>
+        </div>
+      </td>
+      <td><span class="badge ${gradeColors[r.grade]||'badge-gray'}">${r.grade}</span></td>
+      <td>${r.remarks}</td>
+      <td><button class="btn btn-outline btn-sm" onclick="viewReportCard('${r.studentId}')"><i class="fas fa-id-card"></i></button></td>
+    </tr>`;
+  }).join('');
+}
+
+function saveExam(e) {
+  e.preventDefault();
+  const id = document.getElementById('ef_id').value;
+  const data = {
+    name:       document.getElementById('ef_name').value.trim(),
+    class:      document.getElementById('ef_class').value,
+    subject:    document.getElementById('ef_subject').value,
+    date:       document.getElementById('ef_date').value,
+    totalMarks: parseInt(document.getElementById('ef_total').value)||100,
+    passMark:   parseInt(document.getElementById('ef_pass').value)||40,
+  };
+  if (id) {
+    DB.update('exams', id, data);
+    showToast('Exam updated!','success');
+  } else {
+    data.id = 'EX' + Date.now().toString().slice(-6);
+    DB.add('exams', data);
+    showToast('Exam created!','success');
+  }
+  closeModal('examModal');
+  renderExamsPage();
+}
+
+function deleteExam(id, name) {
+  deleteRecord('exams', id, name, () => {
+    // Remove associated results
+    DB.find('results', r=>r.examId===id).forEach(r=>DB.delete('results',r.id));
+    renderExamsPage();
+  });
+}
+
+function openEnterMarks(examId) {
+  currentExamId = examId;
+  marksData = {};
+  const exam = DB.findOne('exams', e=>e.id===examId);
+  if (!exam) return;
+
+  const students = DB.find('students', s=>s.class===exam.class && s.status==='active');
+  const existing = DB.find('results', r=>r.examId===examId);
+  existing.forEach(r => { marksData[r.studentId] = r.obtainedMarks; });
+
+  document.getElementById('marksContent').innerHTML = `
+  <div style="margin-bottom:16px">
+    <strong>${exam.name}</strong> — ${exam.subject} (Class ${exam.class})<br/>
+    <span style="font-size:13px;color:var(--text-light)">Total Marks: ${exam.totalMarks} | Pass Marks: ${exam.passMark}</span>
+  </div>
+  <table>
+    <thead><tr><th>Roll No</th><th>Student Name</th><th>Marks Obtained (/${exam.totalMarks})</th><th>Grade</th></tr></thead>
+    <tbody>
+      ${students.map(s=>{
+        const current = marksData[s.id] !== undefined ? marksData[s.id] : '';
+        const grade = current !== '' ? calcGrade(current, exam.totalMarks) : '–';
+        return `<tr>
+          <td>${s.rollNo}</td>
+          <td><strong>${s.name}</strong></td>
+          <td><input type="number" min="0" max="${exam.totalMarks}" value="${current}" class="form-control" style="width:100px"
+            oninput="marksData['${s.id}']=parseInt(this.value)||0;this.closest('tr').querySelector('.grade-cell').textContent=calcGrade(parseInt(this.value)||0,${exam.totalMarks})"/></td>
+          <td class="grade-cell">${grade}</td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table>`;
+  openModal('marksModal');
+}
+
+function saveMarks() {
+  const exam = DB.findOne('exams', e=>e.id===currentExamId);
+  if (!exam) return;
+  let count = 0;
+  Object.entries(marksData).forEach(([studentId, marks]) => {
+    if (marks === '' || marks === undefined) return;
+    const student = DB.findOne('students', s=>s.id===studentId);
+    if (!student) return;
+    const grade = calcGrade(marks, exam.totalMarks);
+    const remarks = marks>=exam.passMark ? (marks>=80?'Excellent':marks>=60?'Good':'Satisfactory') : 'Below average';
+    const existing = DB.findOne('results', r=>r.examId===currentExamId && r.studentId===studentId);
+    if (existing) {
+      DB.update('results', existing.id, { obtainedMarks:marks, grade, remarks });
+    } else {
+      DB.add('results', {id:'R'+Date.now().toString().slice(-8), examId:currentExamId, studentId, studentName:student.name, obtainedMarks:marks, grade, remarks});
+    }
+    count++;
+  });
+  DB.add('activities', {id:DB.generateId('AC'), title:`Marks entered for ${exam.name} (${exam.subject})`, time:'Just now', icon:'chart-bar', color:'#8b5cf6'});
+  showToast(`${count} results saved!`, 'success');
+  closeModal('marksModal');
+  renderExamsPage();
+}
+
+function viewReportCard(studentId) {
+  const student = DB.findOne('students', s=>s.id===studentId);
+  if (!student) return;
+  const results = DB.find('results', r=>r.studentId===studentId);
+
+  let totalObtained = 0, totalMax = 0;
+  const rows = results.map(r=>{
+    const ex = DB.findOne('exams', e=>e.id===r.examId);
+    if (!ex) return '';
+    totalObtained += r.obtainedMarks;
+    totalMax += ex.totalMarks;
+    const pct = Math.round((r.obtainedMarks/ex.totalMarks)*100);
+    return `<tr><td>${ex.name}</td><td>${ex.subject}</td><td>${r.obtainedMarks}/${ex.totalMarks}</td><td>${pct}%</td><td>${r.grade}</td><td>${r.remarks}</td></tr>`;
+  }).join('');
+
+  const overallPct = totalMax > 0 ? Math.round((totalObtained/totalMax)*100) : 0;
+  const overallGrade = totalMax > 0 ? calcGrade(totalObtained, totalMax) : '–';
+  const pos = overallPct>=80?'Excellent':overallPct>=60?'Good':overallPct>=50?'Satisfactory':'Needs Improvement';
+
+  // Attendance summary
+  const att = DB.find('attendance',a=>a.entityId===studentId&&a.type==='student');
+  const present = att.filter(a=>a.status==='present').length;
+
+  document.getElementById('reportCardContent').innerHTML = `
+  <div style="border:2px solid #1a56db;border-radius:12px;padding:24px">
+    <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #1a56db;padding-bottom:16px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <img src="logo.jpg" style="width:60px;height:60px;border-radius:50%;object-fit:cover"/>
+        <div>
+          <h2 style="font-size:18px;color:#1a56db;margin:0">Muslim Model School Khaddi</h2>
+          <p style="margin:0;font-size:12px;color:var(--text-light)">Academic Year 2025–26 | Student Report Card</p>
+        </div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:12px;color:var(--text-light)">Issue Date</div>
+        <div style="font-weight:600">${formatDate(today())}</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      <div>
+        <div><strong>Name:</strong> ${student.name}</div>
+        <div><strong>Roll No:</strong> ${student.rollNo}</div>
+        <div><strong>Class:</strong> ${student.class}</div>
+        <div><strong>Father:</strong> ${student.fatherName}</div>
+      </div>
+      <div>
+        <div><strong>Days Present:</strong> ${present}</div>
+        <div><strong>Admission No:</strong> ${student.id}</div>
+        <div><strong>Status:</strong> <span style="color:green">${student.status}</span></div>
+        <div><strong>Gender:</strong> ${student.gender}</div>
+      </div>
+    </div>
+    ${results.length > 0 ? `
+    <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+      <thead style="background:#1a56db;color:#fff">
+        <tr><th style="padding:10px;text-align:left">Exam</th><th>Subject</th><th>Marks</th><th>%</th><th>Grade</th><th>Remarks</th></tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div style="background:#e8effd;border-radius:8px;padding:16px;display:flex;justify-content:space-around;text-align:center">
+      <div><div style="font-size:12px;color:var(--text-light)">Total Marks</div><div style="font-size:20px;font-weight:700">${totalObtained}/${totalMax}</div></div>
+      <div><div style="font-size:12px;color:var(--text-light)">Percentage</div><div style="font-size:20px;font-weight:700;color:#1a56db">${overallPct}%</div></div>
+      <div><div style="font-size:12px;color:var(--text-light)">Grade</div><div style="font-size:20px;font-weight:700;color:green">${overallGrade}</div></div>
+      <div><div style="font-size:12px;color:var(--text-light)">Position</div><div style="font-size:16px;font-weight:600">${pos}</div></div>
+    </div>` : '<p style="color:var(--text-light);text-align:center">No exam results recorded yet.</p>'}
+    <div style="margin-top:24px;display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:16px">
+      <div style="text-align:center"><div style="border-top:1px solid #333;width:120px;margin-top:32px"></div><div style="font-size:11px">Class Teacher</div></div>
+      <div style="text-align:center"><div style="border-top:1px solid #333;width:120px;margin-top:32px"></div><div style="font-size:11px">Principal</div></div>
+    </div>
+  </div>`;
+  openModal('reportCardModal');
+}
+</script>
+</body>
+</html>

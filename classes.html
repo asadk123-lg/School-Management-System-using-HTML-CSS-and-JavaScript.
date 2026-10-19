@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <meta name="description" content="Classes & Timetable – Manage classes, assign teachers, and organize weekly schedules."/>
+  <title>Classes – Muslim Model School Khaddi</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="css/style.css"/>
+</head>
+<body>
+<div class="app-layout" id="appLayout"></div>
+<div id="toastContainer" class="toast-container"></div>
+
+<!-- ADD/EDIT CLASS MODAL -->
+<div class="modal-overlay" id="classModal" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="classModalTitle"><i class="fas fa-school"></i> Add New Class</h3>
+      <button class="modal-close" onclick="closeModal('classModal')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <form id="classForm" onsubmit="saveClass(event)">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Class Name <span class="required">*</span></label>
+            <input type="text" class="form-control" id="cf_name" placeholder="e.g., 10-A" required/>
+          </div>
+          <div class="form-group">
+            <label>Grade</label>
+            <select class="form-control" id="cf_grade">
+              <option>6</option><option>7</option><option>8</option><option>9</option><option>10</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Section</label>
+            <select class="form-control" id="cf_section">
+              <option>A</option><option>B</option><option>C</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Class Teacher <span class="required">*</span></label>
+            <select class="form-control" id="cf_teacher" required>
+              <option value="">Select Teacher</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Main Subject</label>
+            <select class="form-control" id="cf_subject">
+              <option>Mathematics</option><option>English</option><option>Physics</option>
+              <option>Chemistry</option><option>Biology</option><option>Computer Science</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Capacity</label>
+            <input type="number" class="form-control" id="cf_capacity" value="35"/>
+          </div>
+        </div>
+        <input type="hidden" id="cf_id"/>
+        <div class="form-actions">
+          <button type="button" class="btn btn-outline" onclick="closeModal('classModal')">Cancel</button>
+          <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save Class</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/app.js"></script>
+<script>
+const session = Auth.requireAuth();
+if (session) {
+  document.getElementById('appLayout').innerHTML = buildSidebar() + `
+  <div class="main-content">
+    ${buildHeader('Classes & Timetable')}
+    <div class="page-content" id="pageContent"></div>
+  </div>`;
+  setupLayout('classes');
+  renderClassesPage();
+}
+
+function renderClassesPage() {
+  const classes  = DB.get('classes');
+  const teachers = DB.get('teachers');
+  const students = DB.get('students');
+
+  document.getElementById('pageContent').innerHTML = `
+  <div class="page-header">
+    <div class="page-header-left">
+      <p class="breadcrumb">Home / <span>Classes</span></p>
+      <h2>Classes & Timetable</h2>
+      <p>Manage classes, assign teachers, and organize timetables.</p>
+    </div>
+    ${Auth.isAdmin() ? `<button class="btn btn-primary" onclick="openAddClassModal()"><i class="fas fa-plus"></i> Add Class</button>` : ''}
+  </div>
+
+  <!-- CLASS CARDS -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-bottom:24px">
+    ${classes.map(c=>{
+      const teacher = teachers.find(t=>t.id===c.teacher);
+      const enrolled = students.filter(s=>s.class===c.name).length;
+      const pct = Math.round((enrolled/c.capacity)*100);
+      return `
+      <div class="card" style="overflow:visible">
+        <div style="background:linear-gradient(135deg,var(--primary),#2563eb);padding:20px;margin:-1px -1px 0;border-radius:14px 14px 0 0">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+              <div style="font-size:24px;font-weight:800;color:#fff">${c.name}</div>
+              <div style="font-size:13px;color:rgba(255,255,255,.7)">Grade ${c.grade}, Section ${c.section}</div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:24px;font-weight:800;color:#fff">${enrolled}</div>
+              <div style="font-size:11px;color:rgba(255,255,255,.7)">Students</div>
+            </div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+            <div class="avatar" style="background:${sc(teacher?teacher.name:'T')};color:#fff;width:36px;height:36px;font-size:13px">
+              ${teacher?avatarInitials(teacher.name):'?'}</div>
+            <div>
+              <div style="font-size:13px;font-weight:600">${teacher?teacher.name:'No Teacher Assigned'}</div>
+              <div style="font-size:11px;color:var(--text-light)">${c.subject}</div>
+            </div>
+          </div>
+          <div style="margin-bottom:12px">
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+              <span>Capacity: ${enrolled}/${c.capacity}</span>
+              <span style="font-weight:600">${pct}%</span>
+            </div>
+            <div class="progress-bar-wrap">
+              <div class="progress-bar ${pct>80?'green':pct>60?'blue':'orange'}" style="width:${pct}%"></div>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-outline btn-sm" style="flex:1" onclick="viewTimetable('${c.id}','${c.name}')"><i class="fas fa-calendar"></i> Timetable</button>
+            ${Auth.isAdmin()?`<button class="btn btn-outline btn-icon btn-sm" onclick="openEditClassModal('${c.id}')"><i class="fas fa-edit"></i></button>
+            <button class="btn btn-danger btn-icon btn-sm" onclick="deleteClass('${c.id}','${c.name}')"><i class="fas fa-trash"></i></button>`:''}
+          </div>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>
+
+  <!-- SUBJECTS TABLE -->
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-header">
+      <h3><i class="fas fa-book"></i> Subject-Teacher Assignment</h3>
+    </div>
+    <div class="table-wrapper">
+      <table>
+        <thead><tr><th>Class</th><th>Subject</th><th>Teacher</th><th>Students</th><th>Status</th></tr></thead>
+        <tbody>
+          ${classes.map(c=>{
+            const t = teachers.find(t=>t.id===c.teacher);
+            const enrolled = students.filter(s=>s.class===c.name).length;
+            return `<tr>
+              <td><span class="badge badge-primary">${c.name}</span></td>
+              <td>${c.subject}</td>
+              <td>${t?`<div class="entity-cell"><div class="avatar" style="background:${sc(t.name)};color:#fff;width:28px;height:28px;font-size:10px">${avatarInitials(t.name)}</div><span>${t.name}</span></div>`:'<span style="color:var(--text-light)">Unassigned</span>'}</td>
+              <td>${enrolled}</td>
+              <td><span class="badge badge-success">Active</span></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- TIMETABLE -->
+  <div class="card" id="timetableSection" style="display:none">
+    <div class="card-header">
+      <h3><i class="fas fa-clock"></i> Weekly Timetable – <span id="ttClassName"></span></h3>
+      <button class="btn btn-outline btn-sm" onclick="printSection('timetableGrid')"><i class="fas fa-print"></i> Print</button>
+    </div>
+    <div class="card-body" id="timetableGrid"></div>
+  </div>`;
+}
+
+function sc(str) {
+  const colors = ['#1a56db','#10b981','#8b5cf6','#f59e0b','#ec4899','#06b6d4'];
+  let h = 0;
+  for (let c of str) h = c.charCodeAt(0) + ((h<<5)-h);
+  return colors[Math.abs(h) % colors.length];
+}
+
+function openAddClassModal() {
+  document.getElementById('classModalTitle').innerHTML='<i class="fas fa-school"></i> Add New Class';
+  document.getElementById('classForm').reset();
+  document.getElementById('cf_id').value='';
+  populateTeacherSelect();
+  openModal('classModal');
+}
+
+function openEditClassModal(id) {
+  const c = DB.findOne('classes', cl=>cl.id===id);
+  if (!c) return;
+  document.getElementById('classModalTitle').innerHTML='<i class="fas fa-edit"></i> Edit Class';
+  populateTeacherSelect();
+  document.getElementById('cf_id').value=c.id;
+  document.getElementById('cf_name').value=c.name;
+  document.getElementById('cf_grade').value=c.grade;
+  document.getElementById('cf_section').value=c.section;
+  document.getElementById('cf_teacher').value=c.teacher;
+  document.getElementById('cf_subject').value=c.subject;
+  document.getElementById('cf_capacity').value=c.capacity;
+  openModal('classModal');
+}
+
+function populateTeacherSelect() {
+  const sel = document.getElementById('cf_teacher');
+  sel.innerHTML = '<option value="">Select Teacher</option>' +
+    DB.get('teachers').map(t=>`<option value="${t.id}">${t.name} (${t.subject})</option>`).join('');
+}
+
+function saveClass(e) {
+  e.preventDefault();
+  const id = document.getElementById('cf_id').value;
+  const data = {
+    name:     document.getElementById('cf_name').value.trim(),
+    grade:    document.getElementById('cf_grade').value,
+    section:  document.getElementById('cf_section').value,
+    teacher:  document.getElementById('cf_teacher').value,
+    subject:  document.getElementById('cf_subject').value,
+    capacity: parseInt(document.getElementById('cf_capacity').value)||35,
+    enrolled: 0,
+  };
+  if (id) {
+    DB.update('classes', id, data);
+    showToast('Class updated!','success');
+  } else {
+    data.id = 'CL'+Date.now().toString().slice(-6);
+    DB.add('classes', data);
+    showToast('Class added!','success');
+  }
+  closeModal('classModal');
+  renderClassesPage();
+}
+
+function deleteClass(id, name) {
+  deleteRecord('classes', id, name, ()=>renderClassesPage());
+}
+
+function viewTimetable(classId, className) {
+  const section = document.getElementById('timetableSection');
+  const grid    = document.getElementById('timetableGrid');
+  const ttName  = document.getElementById('ttClassName');
+  if (!section || !grid) return;
+  section.style.display = 'block';
+  ttName.textContent = className;
+  section.scrollIntoView({behavior:'smooth'});
+
+  const days = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+  const periods = [
+    {label:'P1', time:'08:00–08:40'},
+    {label:'P2', time:'08:40–09:20'},
+    {label:'P3', time:'09:20–10:00'},
+    {label:'Break',time:'10:00–10:20'},
+    {label:'P4', time:'10:20–11:00'},
+    {label:'P5', time:'11:00–11:40'},
+    {label:'P6', time:'11:40–12:20'},
+  ];
+  const subjects = ['Math','English','Physics','Urdu','Computer','Chemistry','Biology','Islamiat','Pakistan Studies'];
+  const teachers = DB.get('teachers');
+
+  // Generate demo timetable
+  function randSubj(d,p) {
+    const idx = (d*7+p) % subjects.length;
+    return subjects[idx];
+  }
+  function randTeacher(subj) {
+    return teachers.find(t=>t.subject.toLowerCase().includes(subj.toLowerCase())) || teachers[0];
+  }
+
+  grid.innerHTML = `<div class="timetable-grid">
+  <table>
+    <thead>
+      <tr>
+        <th>Period</th>
+        ${days.map(d=>`<th>${d}</th>`).join('')}
+      </tr>
+    </thead>
+    <tbody>
+      ${periods.map((p,pi)=>`<tr>
+        <td style="font-size:11px;font-weight:600;color:var(--text-mid);background:var(--bg-app)">
+          <div>${p.label}</div><div style="font-size:10px;color:var(--text-light)">${p.time}</div>
+        </td>
+        ${p.label==='Break'
+          ? days.map(()=>`<td><div class="period-cell break">Break</div></td>`).join('')
+          : days.map((d,di)=>{
+              const subj = randSubj(di, pi);
+              const t = randTeacher(subj);
+              return `<td><div class="period-cell">
+                <div style="font-weight:600">${subj}</div>
+                <div style="font-size:10px;color:var(--primary)">${t?t.name.split(' ').pop():''}</div>
+              </div></td>`;
+            }).join('')
+        }
+      </tr>`).join('')}
+    </tbody>
+  </table></div>`;
+}
+</script>
+</body>
+</html>

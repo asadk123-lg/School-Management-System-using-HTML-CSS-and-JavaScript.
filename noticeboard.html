@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <meta name="description" content="Notice Board – School announcements, holidays, and upcoming events."/>
+  <title>Notice Board – Muslim Model School Khaddi</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="css/style.css"/>
+</head>
+<body>
+<div class="app-layout" id="appLayout"></div>
+<div id="toastContainer" class="toast-container"></div>
+
+<!-- ADD NOTICE MODAL -->
+<div class="modal-overlay" id="noticeModal" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="noticeModalTitle"><i class="fas fa-plus-circle"></i> Post Notice</h3>
+      <button class="modal-close" onclick="closeModal('noticeModal')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <form id="noticeForm" onsubmit="saveNotice(event)">
+        <div class="form-group">
+          <label>Title <span class="required">*</span></label>
+          <input type="text" class="form-control" id="nf_title" placeholder="Notice title..." required/>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Date <span class="required">*</span></label>
+            <input type="date" class="form-control" id="nf_date" required/>
+          </div>
+          <div class="form-group">
+            <label>Type</label>
+            <select class="form-control" id="nf_type">
+              <option value="general">General</option>
+              <option value="event">Event</option>
+              <option value="urgent">Urgent</option>
+              <option value="holiday">Holiday</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Message <span class="required">*</span></label>
+          <textarea class="form-control" id="nf_body" rows="4" placeholder="Notice content..." required></textarea>
+        </div>
+        <input type="hidden" id="nf_id"/>
+        <div class="form-actions">
+          <button type="button" class="btn btn-outline" onclick="closeModal('noticeModal')">Cancel</button>
+          <button type="submit" class="btn btn-primary"><i class="fas fa-bullhorn"></i> Post Notice</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/app.js"></script>
+<script>
+const session = Auth.requireAuth();
+if (session) {
+  document.getElementById('appLayout').innerHTML = buildSidebar() + `
+  <div class="main-content">
+    ${buildHeader('Notice Board')}
+    <div class="page-content" id="pageContent"></div>
+  </div>`;
+  setupLayout('noticeboard');
+  renderNoticePage();
+}
+
+let noticeFilter = 'all';
+
+function renderNoticePage() {
+  const notices = DB.get('notices');
+  const urgentCount = notices.filter(n=>n.type==='urgent').length;
+  const eventCount  = notices.filter(n=>n.type==='event').length;
+  const holidayCount= notices.filter(n=>n.type==='holiday').length;
+
+  document.getElementById('pageContent').innerHTML = `
+  <div class="page-header">
+    <div class="page-header-left">
+      <p class="breadcrumb">Home / <span>Notice Board</span></p>
+      <h2>Notice Board</h2>
+      <p>School announcements, events, holidays, and important notices.</p>
+    </div>
+    ${Auth.isAdmin() || Auth.isTeacher() ? `<button class="btn btn-primary" onclick="openAddNoticeModal()"><i class="fas fa-bullhorn"></i> Post Notice</button>` : ''}
+  </div>
+
+  <div class="stat-cards" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
+    <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-bullhorn"></i></div>
+      <div class="stat-info"><div class="stat-number">${notices.length}</div><div class="stat-label">Total Notices</div></div></div>
+    <div class="stat-card"><div class="stat-icon red"><i class="fas fa-exclamation-triangle"></i></div>
+      <div class="stat-info"><div class="stat-number">${urgentCount}</div><div class="stat-label">Urgent</div></div></div>
+    <div class="stat-card"><div class="stat-icon green"><i class="fas fa-calendar-star"></i></div>
+      <div class="stat-info"><div class="stat-number">${eventCount}</div><div class="stat-label">Events</div></div></div>
+    <div class="stat-card"><div class="stat-icon orange"><i class="fas fa-umbrella-beach"></i></div>
+      <div class="stat-info"><div class="stat-number">${holidayCount}</div><div class="stat-label">Holidays</div></div></div>
+  </div>
+
+  <!-- FILTER TABS -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="setNoticeFilter('all',this)">All Notices</button>
+    <button class="tab-btn" onclick="setNoticeFilter('general',this)">General</button>
+    <button class="tab-btn" onclick="setNoticeFilter('event',this)">Events</button>
+    <button class="tab-btn" onclick="setNoticeFilter('urgent',this)">Urgent</button>
+    <button class="tab-btn" onclick="setNoticeFilter('holiday',this)">Holidays</button>
+  </div>
+
+  <div class="grid-2">
+    <!-- NOTICES LIST -->
+    <div id="noticesGrid" style="display:flex;flex-direction:column;gap:16px"></div>
+
+    <!-- UPCOMING EVENTS -->
+    <div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header">
+          <h3><i class="fas fa-calendar-alt"></i> Upcoming Events</h3>
+        </div>
+        <div class="card-body" style="padding-top:8px">
+          ${notices.filter(n=>n.type==='event').map(n=>`
+          <div style="display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)">
+            <div style="background:var(--primary-light);border-radius:8px;width:44px;height:44px;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0">
+              <span style="font-size:16px;font-weight:800;color:var(--primary);line-height:1">${new Date(n.date).getDate()}</span>
+              <span style="font-size:9px;color:var(--primary)">${new Date(n.date).toLocaleString('en',{month:'short'}).toUpperCase()}</span>
+            </div>
+            <div>
+              <div style="font-weight:600;font-size:13.5px">${n.title}</div>
+              <div style="font-size:12px;color:var(--text-light);margin-top:2px">${n.body.substring(0,60)}...</div>
+            </div>
+          </div>`).join('') || '<p style="color:var(--text-light);text-align:center;padding:16px">No upcoming events.</p>'}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3><i class="fas fa-umbrella-beach"></i> Upcoming Holidays</h3>
+        </div>
+        <div class="card-body" style="padding-top:8px">
+          ${notices.filter(n=>n.type==='holiday').map(n=>`
+          <div style="display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)">
+            <div style="background:var(--warning-light);border-radius:8px;width:44px;height:44px;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0">
+              <span style="font-size:16px;font-weight:800;color:var(--warning);line-height:1">${new Date(n.date).getDate()}</span>
+              <span style="font-size:9px;color:var(--warning)">${new Date(n.date).toLocaleString('en',{month:'short'}).toUpperCase()}</span>
+            </div>
+            <div>
+              <div style="font-weight:600;font-size:13.5px">${n.title}</div>
+              <div style="font-size:12px;color:var(--text-light);margin-top:2px">${n.body.substring(0,60)}...</div>
+            </div>
+          </div>`).join('') || '<p style="color:var(--text-light);text-align:center;padding:16px">No upcoming holidays.</p>'}
+        </div>
+      </div>
+    </div>
+  </div>`;
+
+  renderNotices();
+}
+
+function setNoticeFilter(filter, btn) {
+  noticeFilter = filter;
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderNotices();
+}
+
+function renderNotices() {
+  let notices = DB.get('notices').slice().reverse(); // newest first
+  if (noticeFilter !== 'all') notices = notices.filter(n=>n.type===noticeFilter);
+  const grid = document.getElementById('noticesGrid');
+  if (!grid) return;
+
+  const typeConfig = {
+    general: { label:'General', badgeClass:'badge-primary', cardClass:'' },
+    event:   { label:'Event',   badgeClass:'badge-success', cardClass:'success' },
+    urgent:  { label:'Urgent',  badgeClass:'badge-danger',  cardClass:'urgent' },
+    holiday: { label:'Holiday', badgeClass:'badge-warning', cardClass:'' },
+  };
+  const typeIcons = { general:'fas fa-info-circle', event:'fas fa-calendar-star', urgent:'fas fa-exclamation-triangle', holiday:'fas fa-umbrella-beach' };
+
+  if (notices.length === 0) {
+    grid.innerHTML = '<div class="empty-state"><i class="fas fa-bullhorn"></i><h4>No notices found</h4><p>Post a notice to get started.</p></div>';
+    return;
+  }
+
+  grid.innerHTML = notices.map(n=>{
+    const cfg = typeConfig[n.type] || typeConfig.general;
+    return `
+    <div class="notice-item ${cfg.cardClass}" style="position:relative">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <i class="${typeIcons[n.type]||typeIcons.general}" style="color:${n.type==='urgent'?'var(--danger)':n.type==='event'?'var(--success)':'var(--primary)'}"></i>
+          <span class="notice-title">${n.title}</span>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="badge ${cfg.badgeClass}">${cfg.label}</span>
+          ${Auth.isAdmin()||Auth.isTeacher()?`
+          <button class="btn btn-outline btn-icon btn-sm" onclick="editNotice('${n.id}')"><i class="fas fa-edit"></i></button>
+          <button class="btn btn-danger btn-icon btn-sm" onclick="deleteNotice('${n.id}','${n.title}')"><i class="fas fa-trash"></i></button>`:''}
+        </div>
+      </div>
+      <div class="notice-date"><i class="fas fa-calendar-alt"></i> ${formatDate(n.date)} &nbsp;|&nbsp; <i class="fas fa-user"></i> ${n.author}</div>
+      <div class="notice-body">${n.body}</div>
+    </div>`;
+  }).join('');
+}
+
+function openAddNoticeModal() {
+  document.getElementById('noticeModalTitle').innerHTML='<i class="fas fa-plus-circle"></i> Post Notice';
+  document.getElementById('noticeForm').reset();
+  document.getElementById('nf_id').value='';
+  document.getElementById('nf_date').value=today();
+  openModal('noticeModal');
+}
+
+function editNotice(id) {
+  const n = DB.findOne('notices', n=>n.id===id);
+  if (!n) return;
+  document.getElementById('noticeModalTitle').innerHTML='<i class="fas fa-edit"></i> Edit Notice';
+  document.getElementById('nf_id').value=n.id;
+  document.getElementById('nf_title').value=n.title;
+  document.getElementById('nf_date').value=n.date;
+  document.getElementById('nf_type').value=n.type;
+  document.getElementById('nf_body').value=n.body;
+  openModal('noticeModal');
+}
+
+function saveNotice(e) {
+  e.preventDefault();
+  const id = document.getElementById('nf_id').value;
+  const data = {
+    title:  document.getElementById('nf_title').value.trim(),
+    date:   document.getElementById('nf_date').value,
+    type:   document.getElementById('nf_type').value,
+    body:   document.getElementById('nf_body').value.trim(),
+    author: session.name,
+  };
+  if (id) {
+    DB.update('notices', id, data);
+    showToast('Notice updated!','success');
+  } else {
+    data.id='N'+Date.now().toString().slice(-6);
+    DB.add('notices', data);
+    showToast('Notice posted!','success');
+  }
+  closeModal('noticeModal');
+  renderNoticePage();
+}
+
+function deleteNotice(id, title) {
+  deleteRecord('notices', id, title, ()=>renderNoticePage());
+}
+</script>
+</body>
+</html>

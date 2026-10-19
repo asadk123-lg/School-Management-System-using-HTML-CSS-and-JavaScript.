@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <meta name="description" content="Teacher Management – Manage teacher profiles, subjects, and salaries."/>
+  <title>Teachers – Muslim Model School Khaddi</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="css/style.css"/>
+</head>
+<body>
+<div class="app-layout" id="appLayout"></div>
+<div id="toastContainer" class="toast-container"></div>
+
+<!-- ADD/EDIT MODAL -->
+<div class="modal-overlay" id="teacherModal" style="display:none">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h3 id="tModalTitle"><i class="fas fa-user-plus"></i> Add New Teacher</h3>
+      <button class="modal-close" onclick="closeModal('teacherModal')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <form id="teacherForm" onsubmit="saveTeacher(event)">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Full Name <span class="required">*</span></label>
+            <input type="text" class="form-control" id="tf_name" placeholder="Teacher's full name" required/>
+          </div>
+          <div class="form-group">
+            <label>Employee No <span class="required">*</span></label>
+            <input type="text" class="form-control" id="tf_emp" placeholder="e.g., E009" required/>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Subject <span class="required">*</span></label>
+            <select class="form-control" id="tf_subject" required>
+              <option value="">Select Subject</option>
+              <option>Mathematics</option><option>English</option><option>Physics</option>
+              <option>Chemistry</option><option>Biology</option><option>Computer Science</option>
+              <option>Urdu</option><option>Islamiat</option><option>Pakistan Studies</option>
+              <option>Arts</option><option>Physical Education</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Qualification <span class="required">*</span></label>
+            <input type="text" class="form-control" id="tf_qual" placeholder="e.g., M.Sc Mathematics" required/>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Phone <span class="required">*</span></label>
+            <input type="tel" class="form-control" id="tf_phone" placeholder="0300-1234567" required/>
+          </div>
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" class="form-control" id="tf_email" placeholder="teacher@muslimmodelschool.edu"/>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Salary (Rs.)</label>
+            <input type="number" class="form-control" id="tf_salary" placeholder="50000"/>
+          </div>
+          <div class="form-group">
+            <label>Joining Date</label>
+            <input type="date" class="form-control" id="tf_join"/>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Status</label>
+            <select class="form-control" id="tf_status">
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="on-leave">On Leave</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Address</label>
+            <input type="text" class="form-control" id="tf_address" placeholder="Home address"/>
+          </div>
+        </div>
+        <input type="hidden" id="tf_id"/>
+        <div class="form-actions">
+          <button type="button" class="btn btn-outline" onclick="closeModal('teacherModal')">Cancel</button>
+          <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save Teacher</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/app.js"></script>
+<script>
+const session = Auth.requireAuth();
+if (session) {
+  document.getElementById('appLayout').innerHTML = buildSidebar() + `
+  <div class="main-content">
+    ${buildHeader('Teacher Management')}
+    <div class="page-content" id="pageContent"></div>
+  </div>`;
+  setupLayout('teachers');
+  renderTeachersPage();
+}
+
+let teacherSearch = '';
+
+function renderTeachersPage() {
+  const teachers = DB.get('teachers');
+  document.getElementById('pageContent').innerHTML = `
+  <div class="page-header">
+    <div class="page-header-left">
+      <p class="breadcrumb">Home / <span>Teachers</span></p>
+      <h2>Teacher Management</h2>
+      <p>Manage teacher profiles, qualifications, and assignments.</p>
+    </div>
+    ${Auth.isAdmin() ? `<button class="btn btn-primary" onclick="openAddTeacherModal()"><i class="fas fa-user-plus"></i> Add Teacher</button>` : ''}
+  </div>
+
+  <div class="stat-cards" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+    <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-chalkboard-teacher"></i></div>
+      <div class="stat-info"><div class="stat-number">${teachers.length}</div><div class="stat-label">Total Teachers</div></div></div>
+    <div class="stat-card"><div class="stat-icon green"><i class="fas fa-user-check"></i></div>
+      <div class="stat-info"><div class="stat-number">${teachers.filter(t=>t.status==='active').length}</div><div class="stat-label">Active</div></div></div>
+    <div class="stat-card"><div class="stat-icon orange"><i class="fas fa-money-bill"></i></div>
+      <div class="stat-info"><div class="stat-number">Rs.${Math.round(teachers.reduce((s,t)=>s+t.salary,0)/1000)}K</div><div class="stat-label">Total Salary</div></div></div>
+    <div class="stat-card"><div class="stat-icon purple"><i class="fas fa-book"></i></div>
+      <div class="stat-info"><div class="stat-number">${new Set(teachers.map(t=>t.subject)).size}</div><div class="stat-label">Subjects Covered</div></div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h3><i class="fas fa-list"></i> All Teachers</h3>
+      <span class="badge badge-primary" id="teacherCount">${teachers.length} teachers</span>
+    </div>
+    <div class="card-body" style="padding-bottom:0">
+      <div class="search-bar-row">
+        <div class="search-input-wrap">
+          <i class="fas fa-search"></i>
+          <input type="text" id="teacherSearch" placeholder="Search by name, subject..." oninput="filterTeachers()"/>
+        </div>
+        <select class="form-control" style="width:160px" id="subjectFilter" onchange="filterTeachers()">
+          <option value="">All Subjects</option>
+          ${[...new Set(teachers.map(t=>t.subject))].map(s=>`<option>${s}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="table-wrapper">
+      <table id="teachersTable">
+        <thead><tr><th>#</th><th>Teacher</th><th>Emp No</th><th>Subject</th><th>Qualification</th><th>Phone</th><th>Salary</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody id="teachersBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- TEACHER CARDS VIEW -->
+  <div style="margin-top:20px">
+    <h3 style="font-size:16px;font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:8px"><i class="fas fa-id-badge" style="color:var(--primary)"></i> Teacher Cards</h3>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px" id="teacherCards"></div>
+  </div>`;
+
+  renderTeachersTable();
+}
+
+function filterTeachers() {
+  teacherSearch = document.getElementById('teacherSearch').value.toLowerCase();
+  const subj = document.getElementById('subjectFilter').value;
+  renderTeachersTable(subj);
+}
+
+function renderTeachersTable(subjectFilter) {
+  let teachers = DB.get('teachers');
+  if (teacherSearch) teachers = teachers.filter(t =>
+    t.name.toLowerCase().includes(teacherSearch) ||
+    t.subject.toLowerCase().includes(teacherSearch) ||
+    t.empNo.toLowerCase().includes(teacherSearch)
+  );
+  if (subjectFilter) teachers = teachers.filter(t => t.subject === subjectFilter);
+
+  const cnt = document.getElementById('teacherCount');
+  if (cnt) cnt.textContent = teachers.length + ' teachers';
+
+  const tbody = document.getElementById('teachersBody');
+  if (tbody) {
+    if (teachers.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><i class="fas fa-user-slash"></i><h4>No teachers found</h4></div></td></tr>`;
+    } else {
+      tbody.innerHTML = teachers.map((t,i) => `
+        <tr>
+          <td style="color:var(--text-light);font-size:12px">${i+1}</td>
+          <td><div class="entity-cell">
+            <div class="avatar" style="background:${stringToColor(t.name)};color:#fff">${avatarInitials(t.name)}</div>
+            <div><div class="name">${t.name}</div><div class="sub">${t.email}</div></div>
+          </div></td>
+          <td><strong>${t.empNo}</strong></td>
+          <td><span class="badge badge-purple">${t.subject}</span></td>
+          <td>${t.qualification}</td>
+          <td>${t.phone}</td>
+          <td><strong>Rs.${t.salary.toLocaleString()}</strong></td>
+          <td><span class="badge ${t.status==='active'?'badge-success':t.status==='on-leave'?'badge-warning':'badge-gray'}">${t.status}</span></td>
+          <td><div class="td-actions">
+            ${Auth.isAdmin() ? `
+            <button class="btn btn-outline btn-icon btn-sm" title="Edit" onclick="openEditTeacherModal('${t.id}')"><i class="fas fa-edit"></i></button>
+            <button class="btn btn-danger btn-icon btn-sm" title="Delete" onclick="deleteTeacher('${t.id}','${t.name}')"><i class="fas fa-trash"></i></button>` : ''}
+          </div></td>
+        </tr>`).join('');
+    }
+  }
+
+  // Render cards
+  const cardsEl = document.getElementById('teacherCards');
+  if (cardsEl) {
+    cardsEl.innerHTML = DB.get('teachers').map(t=>`
+      <div class="card" style="padding:20px;text-align:center;transition:.2s ease" onmouseover="this.style.transform='translateY(-4px)';this.style.boxShadow='var(--shadow-md)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
+        <div style="width:70px;height:70px;border-radius:50%;background:${stringToColor(t.name)};color:#fff;font-size:24px;font-weight:700;display:flex;align-items:center;justify-content:center;margin:0 auto 12px">
+          ${avatarInitials(t.name)}</div>
+        <div style="font-weight:700;font-size:15px;margin-bottom:4px">${t.name}</div>
+        <span class="badge badge-purple" style="margin-bottom:10px">${t.subject}</span>
+        <div style="font-size:12px;color:var(--text-light);margin-bottom:4px">${t.qualification}</div>
+        <div style="font-size:12px;color:var(--text-light)">${t.phone}</div>
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;justify-content:space-between">
+          <span style="font-size:12px;color:var(--text-mid)">Salary</span>
+          <span style="font-size:12px;font-weight:600;color:var(--success)">Rs.${t.salary.toLocaleString()}</span>
+        </div>
+        <span class="badge ${t.status==='active'?'badge-success':'badge-gray'}" style="margin-top:8px">${t.status}</span>
+      </div>`).join('');
+  }
+}
+
+function stringToColor(str) {
+  const colors = ['#1a56db','#10b981','#8b5cf6','#f59e0b','#ec4899','#06b6d4','#ef4444'];
+  let hash = 0;
+  for (let c of str) hash = c.charCodeAt(0) + ((hash<<5)-hash);
+  return colors[Math.abs(hash) % colors.length];
+}
+
+function openAddTeacherModal() {
+  document.getElementById('tModalTitle').innerHTML = '<i class="fas fa-user-plus"></i> Add New Teacher';
+  document.getElementById('teacherForm').reset();
+  document.getElementById('tf_id').value = '';
+  document.getElementById('tf_join').value = today();
+  openModal('teacherModal');
+}
+
+function openEditTeacherModal(id) {
+  const t = DB.findOne('teachers', t => t.id === id);
+  if (!t) return;
+  document.getElementById('tModalTitle').innerHTML = '<i class="fas fa-edit"></i> Edit Teacher';
+  document.getElementById('tf_id').value      = t.id;
+  document.getElementById('tf_name').value    = t.name;
+  document.getElementById('tf_emp').value     = t.empNo;
+  document.getElementById('tf_subject').value = t.subject;
+  document.getElementById('tf_qual').value    = t.qualification;
+  document.getElementById('tf_phone').value   = t.phone;
+  document.getElementById('tf_email').value   = t.email;
+  document.getElementById('tf_salary').value  = t.salary;
+  document.getElementById('tf_join').value    = t.joinDate;
+  document.getElementById('tf_status').value  = t.status;
+  document.getElementById('tf_address').value = t.address;
+  openModal('teacherModal');
+}
+
+function saveTeacher(e) {
+  e.preventDefault();
+  const id = document.getElementById('tf_id').value;
+  const data = {
+    name:          document.getElementById('tf_name').value.trim(),
+    empNo:         document.getElementById('tf_emp').value.trim(),
+    subject:       document.getElementById('tf_subject').value,
+    qualification: document.getElementById('tf_qual').value.trim(),
+    phone:         document.getElementById('tf_phone').value.trim(),
+    email:         document.getElementById('tf_email').value.trim(),
+    salary:        parseInt(document.getElementById('tf_salary').value)||0,
+    joinDate:      document.getElementById('tf_join').value,
+    status:        document.getElementById('tf_status').value,
+    address:       document.getElementById('tf_address').value.trim(),
+  };
+
+  if (id) {
+    DB.update('teachers', id, data);
+    showToast('Teacher updated successfully!', 'success');
+  } else {
+    data.id = 'T' + Date.now().toString().slice(-6);
+    DB.add('teachers', data);
+    showToast('Teacher added successfully!', 'success');
+  }
+  closeModal('teacherModal');
+  renderTeachersPage();
+}
+
+function deleteTeacher(id, name) {
+  deleteRecord('teachers', id, name, () => renderTeachersPage());
+}
+</script>
+</body>
+</html>

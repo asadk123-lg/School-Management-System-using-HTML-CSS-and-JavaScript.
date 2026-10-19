@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <meta name="description" content="Student Management – Add, edit, search and manage student records."/>
+  <title>Students – Muslim Model School Khaddi</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="css/style.css"/>
+</head>
+<body>
+<div class="app-layout" id="appLayout"></div>
+<div id="toastContainer" class="toast-container"></div>
+
+<!-- ADD/EDIT MODAL -->
+<div class="modal-overlay" id="studentModal" style="display:none">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h3 id="modalTitle"><i class="fas fa-user-plus"></i> Add New Student</h3>
+      <button class="modal-close" onclick="closeModal('studentModal')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <form id="studentForm" onsubmit="saveStudent(event)">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Full Name <span class="required">*</span></label>
+            <input type="text" class="form-control" id="f_name" placeholder="e.g., Ali Hassan" required/>
+          </div>
+          <div class="form-group">
+            <label>Roll Number <span class="required">*</span></label>
+            <input type="text" class="form-control" id="f_roll" placeholder="e.g., 001" required/>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Class <span class="required">*</span></label>
+            <select class="form-control" id="f_class" required>
+              <option value="">Select Class</option>
+              <option>6-A</option><option>6-B</option><option>7-A</option>
+              <option>8-A</option><option>9-B</option><option>10-A</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Date of Birth</label>
+            <input type="date" class="form-control" id="f_dob"/>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Gender <span class="required">*</span></label>
+            <select class="form-control" id="f_gender" required>
+              <option value="">Select</option>
+              <option>Male</option><option>Female</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Admission Date</label>
+            <input type="date" class="form-control" id="f_admission"/>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Father's Name <span class="required">*</span></label>
+            <input type="text" class="form-control" id="f_father" placeholder="Father's full name" required/>
+          </div>
+          <div class="form-group">
+            <label>Parent Contact <span class="required">*</span></label>
+            <input type="tel" class="form-control" id="f_parentPhone" placeholder="e.g., 0300-1234567" required/>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Student Phone</label>
+            <input type="tel" class="form-control" id="f_phone" placeholder="Student contact"/>
+          </div>
+          <div class="form-group">
+            <label>Status</label>
+            <select class="form-control" id="f_status">
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="graduated">Graduated</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Address</label>
+          <textarea class="form-control" id="f_address" placeholder="Home address" rows="2"></textarea>
+        </div>
+        <input type="hidden" id="f_id"/>
+        <div class="form-actions">
+          <button type="button" class="btn btn-outline" onclick="closeModal('studentModal')">Cancel</button>
+          <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save Student</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- VIEW PROFILE MODAL -->
+<div class="modal-overlay" id="profileModal" style="display:none">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h3><i class="fas fa-id-card"></i> Student Profile</h3>
+      <button class="modal-close" onclick="closeModal('profileModal')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body" id="profileContent"></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="printSection('profileContent')"><i class="fas fa-print"></i> Print</button>
+      <button class="btn btn-outline" onclick="closeModal('profileModal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/app.js"></script>
+<script>
+const session = Auth.requireAuth();
+if (session) {
+  document.getElementById('appLayout').innerHTML = buildSidebar() + `
+  <div class="main-content">
+    ${buildHeader('Student Management')}
+    <div class="page-content" id="pageContent"></div>
+  </div>`;
+  setupLayout('students');
+  renderStudentsPage();
+}
+
+let searchQuery = '';
+let filterClass = '';
+let filterStatus = 'all';
+
+function renderStudentsPage() {
+  document.getElementById('pageContent').innerHTML = `
+  <div class="page-header">
+    <div class="page-header-left">
+      <p class="breadcrumb">Home / <span>Students</span></p>
+      <h2>Student Management</h2>
+      <p>Manage all student records, admissions, and profiles.</p>
+    </div>
+    ${Auth.isAdmin() || Auth.isTeacher() ? `<button class="btn btn-primary" id="addStudentBtn" onclick="openAddStudentModal()"><i class="fas fa-user-plus"></i> Add New Student</button>` : ''}
+  </div>
+
+  <div class="stat-cards" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+    <div class="stat-card">
+      <div class="stat-icon blue"><i class="fas fa-users"></i></div>
+      <div class="stat-info"><div class="stat-number">${DB.get('students').length}</div><div class="stat-label">Total Students</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon green"><i class="fas fa-male"></i></div>
+      <div class="stat-info"><div class="stat-number">${DB.get('students').filter(s=>s.gender==='Male').length}</div><div class="stat-label">Male</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon pink"><i class="fas fa-female"></i></div>
+      <div class="stat-info"><div class="stat-number">${DB.get('students').filter(s=>s.gender==='Female').length}</div><div class="stat-label">Female</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon orange"><i class="fas fa-user-check"></i></div>
+      <div class="stat-info"><div class="stat-number">${DB.get('students').filter(s=>s.status==='active').length}</div><div class="stat-label">Active</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h3><i class="fas fa-list"></i> All Students</h3>
+      <span class="badge badge-primary" id="studentCount"></span>
+    </div>
+    <div class="card-body" style="padding-bottom:0">
+      <div class="search-bar-row">
+        <div class="search-input-wrap">
+          <i class="fas fa-search"></i>
+          <input type="text" id="studentSearch" placeholder="Search by name, roll no, class..." oninput="filterStudents()"/>
+        </div>
+        <select class="form-control" style="width:140px" id="classFilter" onchange="filterStudents()">
+          <option value="">All Classes</option>
+          <option>6-A</option><option>6-B</option><option>7-A</option>
+          <option>8-A</option><option>9-B</option><option>10-A</option>
+        </select>
+        <select class="form-control" style="width:130px" id="statusFilter" onchange="filterStudents()">
+          <option value="all">All Status</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+      </div>
+    </div>
+    <div class="table-wrapper">
+      <table id="studentsTable">
+        <thead>
+          <tr>
+            <th>#</th><th>Student</th><th>Roll No</th><th>Class</th>
+            <th>Gender</th><th>Father Name</th><th>Contact</th><th>Status</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="studentsBody"></tbody>
+      </table>
+    </div>
+  </div>`;
+  renderStudentsTable();
+}
+
+function filterStudents() {
+  searchQuery  = document.getElementById('studentSearch').value.toLowerCase();
+  filterClass  = document.getElementById('classFilter').value;
+  filterStatus = document.getElementById('statusFilter').value;
+  renderStudentsTable();
+}
+
+function renderStudentsTable() {
+  let students = DB.get('students');
+  if (searchQuery) students = students.filter(s =>
+    s.name.toLowerCase().includes(searchQuery) ||
+    s.rollNo.toLowerCase().includes(searchQuery) ||
+    s.class.toLowerCase().includes(searchQuery) ||
+    s.fatherName.toLowerCase().includes(searchQuery)
+  );
+  if (filterClass)  students = students.filter(s => s.class === filterClass);
+  if (filterStatus !== 'all') students = students.filter(s => s.status === filterStatus);
+
+  const countEl = document.getElementById('studentCount');
+  if (countEl) countEl.textContent = students.length + ' students';
+
+  const tbody = document.getElementById('studentsBody');
+  if (!tbody) return;
+
+  if (students.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="9">
+      <div class="empty-state"><i class="fas fa-user-slash"></i><h4>No students found</h4><p>Try adjusting your search or filters.</p></div>
+    </td></tr>`;
+    return;
+  }
+
+  const canEdit = Auth.isAdmin() || Auth.isTeacher();
+  tbody.innerHTML = students.map((s,i) => `
+    <tr>
+      <td style="color:var(--text-light);font-size:12px">${i+1}</td>
+      <td>
+        <div class="entity-cell">
+          <div class="avatar" style="background:${stringToColor(s.name)};color:#fff">${avatarInitials(s.name)}</div>
+          <div><div class="name">${s.name}</div><div class="sub">${s.email||''}</div></div>
+        </div>
+      </td>
+      <td><strong>${s.rollNo}</strong></td>
+      <td><span class="badge badge-primary">${s.class}</span></td>
+      <td>${s.gender}</td>
+      <td>${s.fatherName}</td>
+      <td>${s.parentPhone||s.phone||'–'}</td>
+      <td><span class="badge ${s.status==='active'?'badge-success':s.status==='graduated'?'badge-primary':'badge-gray'}">${s.status}</span></td>
+      <td>
+        <div class="td-actions">
+          <button class="btn btn-outline btn-icon btn-sm" title="View Profile" onclick="viewProfile('${s.id}')"><i class="fas fa-eye"></i></button>
+          ${canEdit ? `
+          <button class="btn btn-outline btn-icon btn-sm" title="Edit" onclick="openEditStudentModal('${s.id}')"><i class="fas fa-edit"></i></button>
+          <button class="btn btn-danger btn-icon btn-sm" title="Delete" onclick="deleteStudent('${s.id}','${s.name}')"><i class="fas fa-trash"></i></button>` : ''}
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+function stringToColor(str) {
+  const colors = ['#1a56db','#10b981','#8b5cf6','#f59e0b','#ec4899','#06b6d4','#ef4444'];
+  let hash = 0;
+  for (let c of str) hash = c.charCodeAt(0) + ((hash<<5)-hash);
+  return colors[Math.abs(hash) % colors.length];
+}
+
+function openAddStudentModal() {
+  document.getElementById('modalTitle').innerHTML = '<i class="fas fa-user-plus"></i> Add New Student';
+  document.getElementById('studentForm').reset();
+  document.getElementById('f_id').value = '';
+  document.getElementById('f_admission').value = today();
+  openModal('studentModal');
+}
+
+function openEditStudentModal(id) {
+  const s = DB.findOne('students', s => s.id === id);
+  if (!s) return;
+  document.getElementById('modalTitle').innerHTML = '<i class="fas fa-edit"></i> Edit Student';
+  document.getElementById('f_id').value     = s.id;
+  document.getElementById('f_name').value   = s.name;
+  document.getElementById('f_roll').value   = s.rollNo;
+  document.getElementById('f_class').value  = s.class;
+  document.getElementById('f_dob').value    = s.dob;
+  document.getElementById('f_gender').value = s.gender;
+  document.getElementById('f_admission').value = s.admission;
+  document.getElementById('f_father').value = s.fatherName;
+  document.getElementById('f_parentPhone').value = s.parentPhone;
+  document.getElementById('f_phone').value  = s.phone;
+  document.getElementById('f_address').value = s.address;
+  document.getElementById('f_status').value = s.status;
+  openModal('studentModal');
+}
+
+function saveStudent(e) {
+  e.preventDefault();
+  const id = document.getElementById('f_id').value;
+  const data = {
+    name:        document.getElementById('f_name').value.trim(),
+    rollNo:      document.getElementById('f_roll').value.trim(),
+    class:       document.getElementById('f_class').value,
+    dob:         document.getElementById('f_dob').value,
+    gender:      document.getElementById('f_gender').value,
+    admission:   document.getElementById('f_admission').value,
+    fatherName:  document.getElementById('f_father').value.trim(),
+    parentPhone: document.getElementById('f_parentPhone').value.trim(),
+    phone:       document.getElementById('f_phone').value.trim(),
+    address:     document.getElementById('f_address').value.trim(),
+    status:      document.getElementById('f_status').value,
+    photo:       '',
+  };
+
+  // Duplicate roll check
+  const exists = DB.find('students', s => s.rollNo === data.rollNo && s.id !== id);
+  if (exists.length > 0) {
+    showToast('Roll number already exists!', 'danger');
+    return;
+  }
+
+  if (id) {
+    DB.update('students', id, data);
+    showToast('Student updated successfully!', 'success');
+  } else {
+    data.id = 'STU' + Date.now().toString().slice(-6);
+    DB.add('students', data);
+    // Log activity
+    DB.add('activities', { id: DB.generateId('AC'), title: `New student ${data.name} admitted`, time: 'Just now', icon:'user-plus', color:'#10b981' });
+    showToast('Student added successfully!', 'success');
+  }
+  closeModal('studentModal');
+  renderStudentsPage();
+}
+
+function deleteStudent(id, name) {
+  deleteRecord('students', id, name, () => renderStudentsPage());
+}
+
+function viewProfile(id) {
+  const s = DB.findOne('students', s => s.id === id);
+  if (!s) return;
+
+  // Get attendance summary
+  const att = DB.find('attendance', a => a.entityId === s.id && a.type === 'student');
+  const present = att.filter(a => a.status==='present').length;
+  const absent  = att.filter(a => a.status==='absent').length;
+  const leave   = att.filter(a => a.status==='leave').length;
+
+  // Get fee records
+  const fees = DB.find('fees', f => f.studentId === s.id);
+  const paid = fees.filter(f=>f.status==='paid').length;
+  const due  = fees.filter(f=>f.status==='unpaid').length;
+
+  // Get results
+  const results = DB.find('results', r => r.studentId === s.id);
+  const avgMark = results.length > 0 ? Math.round(results.reduce((s,r)=>s+r.obtainedMarks,0)/results.length) : 0;
+
+  document.getElementById('profileContent').innerHTML = `
+  <div style="display:flex;align-items:flex-start;gap:24px;margin-bottom:24px;flex-wrap:wrap">
+    <div style="text-align:center">
+      <div style="width:100px;height:100px;border-radius:50%;background:${stringToColor(s.name)};color:#fff;font-size:36px;font-weight:700;display:flex;align-items:center;justify-content:center;margin:0 auto 10px">
+        ${avatarInitials(s.name)}
+      </div>
+      <div style="font-weight:700;font-size:18px">${s.name}</div>
+      <div><span class="badge badge-primary">${s.class}</span></div>
+    </div>
+    <div style="flex:1;min-width:0">
+      <div class="form-row" style="margin-bottom:0">
+        <div><strong>Roll No:</strong> ${s.rollNo}</div>
+        <div><strong>DOB:</strong> ${formatDate(s.dob)}</div>
+        <div><strong>Gender:</strong> ${s.gender}</div>
+        <div><strong>Status:</strong> <span class="badge ${s.status==='active'?'badge-success':'badge-gray'}">${s.status}</span></div>
+        <div><strong>Father:</strong> ${s.fatherName}</div>
+        <div><strong>Parent Phone:</strong> ${s.parentPhone}</div>
+        <div><strong>Student Phone:</strong> ${s.phone||'–'}</div>
+        <div><strong>Admission:</strong> ${formatDate(s.admission)}</div>
+      </div>
+      <div style="margin-top:10px"><strong>Address:</strong> ${s.address||'–'}</div>
+    </div>
+  </div>
+  <div class="form-row" style="margin-bottom:20px">
+    <div class="stat-card" style="padding:14px">
+      <div class="stat-icon green"><i class="fas fa-calendar-check"></i></div>
+      <div class="stat-info"><div class="stat-number">${present}</div><div class="stat-label">Days Present</div></div>
+    </div>
+    <div class="stat-card" style="padding:14px">
+      <div class="stat-icon red"><i class="fas fa-calendar-times"></i></div>
+      <div class="stat-info"><div class="stat-number">${absent}</div><div class="stat-label">Days Absent</div></div>
+    </div>
+    <div class="stat-card" style="padding:14px">
+      <div class="stat-icon blue"><i class="fas fa-star"></i></div>
+      <div class="stat-info"><div class="stat-number">${avgMark}%</div><div class="stat-label">Avg Score</div></div>
+    </div>
+    <div class="stat-card" style="padding:14px">
+      <div class="stat-icon orange"><i class="fas fa-file-invoice-dollar"></i></div>
+      <div class="stat-info"><div class="stat-number">${due}</div><div class="stat-label">Fees Due</div></div>
+    </div>
+  </div>
+  ${results.length > 0 ? `
+  <h4 style="margin-bottom:12px;font-size:15px">Recent Exam Results</h4>
+  <table><thead><tr><th>Exam</th><th>Subject</th><th>Marks</th><th>Grade</th></tr></thead>
+  <tbody>${results.map(r=>{
+    const ex = DB.findOne('exams', e=>e.id===r.examId);
+    return `<tr><td>${ex?ex.name:'–'}</td><td>${ex?ex.subject:'–'}</td><td>${r.obtainedMarks}/${ex?ex.totalMarks:100}</td><td><span class="badge badge-primary">${r.grade}</span></td></tr>`;
+  }).join('')}</tbody></table>` : '<p style="color:var(--text-light);margin-top:8px">No exam results recorded yet.</p>'}`;
+
+  openModal('profileModal');
+}
+</script>
+</body>
+</html>

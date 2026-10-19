@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <meta name="description" content="Fees Management – Manage student fees, payments, and generate receipts."/>
+  <title>Fees – Muslim Model School Khaddi</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="css/style.css"/>
+</head>
+<body>
+<div class="app-layout" id="appLayout"></div>
+<div id="toastContainer" class="toast-container"></div>
+
+<!-- ADD FEE MODAL -->
+<div class="modal-overlay" id="feeModal" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="feeModalTitle"><i class="fas fa-plus-circle"></i> Add Fee Record</h3>
+      <button class="modal-close" onclick="closeModal('feeModal')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <form id="feeForm" onsubmit="saveFee(event)">
+        <div class="form-group">
+          <label>Student <span class="required">*</span></label>
+          <select class="form-control" id="ff_student" required onchange="autoFillStudent()">
+            <option value="">Select Student</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Class</label>
+            <input type="text" class="form-control" id="ff_class" readonly placeholder="Auto-filled"/>
+          </div>
+          <div class="form-group">
+            <label>Month <span class="required">*</span></label>
+            <input type="text" class="form-control" id="ff_month" placeholder="e.g., October 2026" required/>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Amount (Rs.) <span class="required">*</span></label>
+            <input type="number" class="form-control" id="ff_amount" placeholder="5000" required/>
+          </div>
+          <div class="form-group">
+            <label>Category</label>
+            <select class="form-control" id="ff_category">
+              <option>Monthly Fee</option>
+              <option>Admission Fee</option>
+              <option>Exam Fee</option>
+              <option>Library Fee</option>
+              <option>Transport Fee</option>
+              <option>Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Status</label>
+            <select class="form-control" id="ff_status" onchange="togglePaidDate()">
+              <option value="unpaid">Unpaid</option>
+              <option value="paid">Paid</option>
+            </select>
+          </div>
+          <div class="form-group" id="paidDateWrap" style="display:none">
+            <label>Payment Date</label>
+            <input type="date" class="form-control" id="ff_paidDate"/>
+          </div>
+        </div>
+        <input type="hidden" id="ff_id"/>
+        <div class="form-actions">
+          <button type="button" class="btn btn-outline" onclick="closeModal('feeModal')">Cancel</button>
+          <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- RECEIPT MODAL -->
+<div class="modal-overlay" id="receiptModal" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <h3><i class="fas fa-receipt"></i> Fee Receipt</h3>
+      <button class="modal-close" onclick="closeModal('receiptModal')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body" id="receiptContent"></div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="printSection('receiptContent')"><i class="fas fa-print"></i> Print Receipt</button>
+      <button class="btn btn-outline" onclick="closeModal('receiptModal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/app.js"></script>
+<script>
+const session = Auth.requireAuth();
+if (session) {
+  document.getElementById('appLayout').innerHTML = buildSidebar() + `
+  <div class="main-content">
+    ${buildHeader('Fees Management')}
+    <div class="page-content" id="pageContent"></div>
+  </div>`;
+  setupLayout('fees');
+  renderFeesPage();
+}
+
+let feeFilter = 'all';
+let feeSearch = '';
+
+function renderFeesPage() {
+  const fees = DB.get('fees');
+  const paid = fees.filter(f=>f.status==='paid');
+  const unpaid = fees.filter(f=>f.status==='unpaid');
+  const totalCollected = paid.reduce((s,f)=>s+f.amount, 0);
+  const totalDue = unpaid.reduce((s,f)=>s+f.amount, 0);
+
+  document.getElementById('pageContent').innerHTML = `
+  <div class="page-header">
+    <div class="page-header-left">
+      <p class="breadcrumb">Home / <span>Fees</span></p>
+      <h2>Fees Management</h2>
+      <p>Track student fee payments, dues, and generate receipts.</p>
+    </div>
+    ${Auth.isAdmin() ? `<button class="btn btn-primary" onclick="openAddFeeModal()"><i class="fas fa-plus"></i> Add Fee Record</button>` : ''}
+  </div>
+
+  <div class="stat-cards" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr))">
+    <div class="stat-card"><div class="stat-icon green"><i class="fas fa-check-circle"></i></div>
+      <div class="stat-info"><div class="stat-number">Rs.${(totalCollected/1000).toFixed(0)}K</div><div class="stat-label">Collected</div>
+        <div class="stat-trend up"><i class="fas fa-arrow-up"></i> ${paid.length} payments</div></div></div>
+    <div class="stat-card"><div class="stat-icon red"><i class="fas fa-exclamation-circle"></i></div>
+      <div class="stat-info"><div class="stat-number">Rs.${(totalDue/1000).toFixed(0)}K</div><div class="stat-label">Outstanding</div>
+        <div class="stat-trend down"><i class="fas fa-arrow-down"></i> ${unpaid.length} dues</div></div></div>
+    <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-file-invoice-dollar"></i></div>
+      <div class="stat-info"><div class="stat-number">${fees.length}</div><div class="stat-label">Total Records</div></div></div>
+    <div class="stat-card"><div class="stat-icon purple"><i class="fas fa-chart-pie"></i></div>
+      <div class="stat-info"><div class="stat-number">${fees.length>0?Math.round((paid.length/fees.length)*100):0}%</div>
+        <div class="stat-label">Collection Rate</div></div></div>
+  </div>
+
+  <!-- FILTER TABS -->
+  <div class="card">
+    <div class="card-header">
+      <h3><i class="fas fa-list"></i> Fee Records</h3>
+    </div>
+    <div class="card-body" style="padding-bottom:0">
+      <div class="tabs" style="margin-bottom:16px">
+        <button class="tab-btn active" onclick="setFeeFilter('all',this)">All Records</button>
+        <button class="tab-btn" onclick="setFeeFilter('paid',this)">Paid <span class="badge badge-success" style="margin-left:4px">${paid.length}</span></button>
+        <button class="tab-btn" onclick="setFeeFilter('unpaid',this)">Unpaid <span class="badge badge-danger" style="margin-left:4px">${unpaid.length}</span></button>
+      </div>
+      <div class="search-bar-row">
+        <div class="search-input-wrap">
+          <i class="fas fa-search"></i>
+          <input type="text" id="feeSearch" placeholder="Search by student, month..." oninput="feeSearch=this.value;renderFeeTable()"/>
+        </div>
+        <select class="form-control" style="width:130px" id="feeClassFilter" onchange="renderFeeTable()">
+          <option value="">All Classes</option>
+          <option>10-A</option><option>9-B</option><option>8-A</option><option>7-A</option><option>6-A</option><option>6-B</option>
+        </select>
+      </div>
+    </div>
+    <div class="table-wrapper">
+      <table>
+        <thead><tr><th>#</th><th>Student</th><th>Class</th><th>Month</th><th>Category</th><th>Amount</th><th>Status</th><th>Paid Date</th><th>Actions</th></tr></thead>
+        <tbody id="feeTableBody"></tbody>
+      </table>
+    </div>
+  </div>`;
+
+  renderFeeTable();
+}
+
+function setFeeFilter(filter, btn) {
+  feeFilter = filter;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderFeeTable();
+}
+
+function renderFeeTable() {
+  let fees = DB.get('fees');
+  if (feeFilter !== 'all') fees = fees.filter(f => f.status === feeFilter);
+  if (feeSearch) fees = fees.filter(f =>
+    f.studentName.toLowerCase().includes(feeSearch.toLowerCase()) ||
+    f.month.toLowerCase().includes(feeSearch.toLowerCase())
+  );
+  const classF = document.getElementById('feeClassFilter');
+  if (classF && classF.value) fees = fees.filter(f => f.class === classF.value);
+
+  const tbody = document.getElementById('feeTableBody');
+  if (!tbody) return;
+
+  if (fees.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><i class="fas fa-file-invoice-dollar"></i><h4>No records found</h4></div></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = fees.map((f,i)=>`
+    <tr>
+      <td style="color:var(--text-light);font-size:12px">${i+1}</td>
+      <td><strong>${f.studentName}</strong></td>
+      <td><span class="badge badge-primary">${f.class}</span></td>
+      <td>${f.month}</td>
+      <td><span class="badge badge-gray">${f.category}</span></td>
+      <td><strong style="color:${f.status==='paid'?'var(--success)':'var(--danger)'}">Rs.${f.amount.toLocaleString()}</strong></td>
+      <td><span class="badge ${f.status==='paid'?'badge-success':'badge-danger'}">${f.status}</span></td>
+      <td>${f.paidDate ? formatDate(f.paidDate) : '–'}</td>
+      <td><div class="td-actions">
+        ${f.status==='paid'?`<button class="btn btn-outline btn-sm" onclick="viewReceipt('${f.id}')"><i class="fas fa-receipt"></i></button>`:''}
+        ${Auth.isAdmin() ? `
+        ${f.status==='unpaid'?`<button class="btn btn-success btn-sm" onclick="markPaid('${f.id}')"><i class="fas fa-check"></i> Pay</button>`:''}
+        <button class="btn btn-danger btn-icon btn-sm" onclick="deleteFee('${f.id}','${f.studentName}')"><i class="fas fa-trash"></i></button>` : ''}
+      </div></td>
+    </tr>`).join('');
+}
+
+function openAddFeeModal() {
+  document.getElementById('feeModalTitle').innerHTML = '<i class="fas fa-plus-circle"></i> Add Fee Record';
+  document.getElementById('feeForm').reset();
+  document.getElementById('ff_id').value = '';
+  document.getElementById('paidDateWrap').style.display = 'none';
+  // Populate students
+  const sel = document.getElementById('ff_student');
+  sel.innerHTML = '<option value="">Select Student</option>' +
+    DB.get('students').map(s=>`<option value="${s.id}" data-class="${s.class}" data-name="${s.name}">${s.name} (${s.class})</option>`).join('');
+  openModal('feeModal');
+}
+
+function autoFillStudent() {
+  const sel = document.getElementById('ff_student');
+  const opt = sel.options[sel.selectedIndex];
+  document.getElementById('ff_class').value = opt.dataset.class || '';
+}
+
+function togglePaidDate() {
+  const v = document.getElementById('ff_status').value;
+  const w = document.getElementById('paidDateWrap');
+  w.style.display = v==='paid' ? 'block' : 'none';
+  if (v==='paid') document.getElementById('ff_paidDate').value = today();
+}
+
+function saveFee(e) {
+  e.preventDefault();
+  const id = document.getElementById('ff_id').value;
+  const sel = document.getElementById('ff_student');
+  const opt = sel.options[sel.selectedIndex];
+  const status = document.getElementById('ff_status').value;
+
+  const data = {
+    studentId:   sel.value,
+    studentName: opt.text.split(' (')[0],
+    class:       document.getElementById('ff_class').value,
+    month:       document.getElementById('ff_month').value,
+    amount:      parseInt(document.getElementById('ff_amount').value)||0,
+    category:    document.getElementById('ff_category').value,
+    status,
+    paidDate:    status==='paid' ? document.getElementById('ff_paidDate').value : '',
+    receipt:     status==='paid' ? generateReceiptNo() : '',
+  };
+
+  if (id) {
+    DB.update('fees', id, data);
+    showToast('Fee record updated!', 'success');
+  } else {
+    data.id = 'F' + Date.now().toString().slice(-6);
+    DB.add('fees', data);
+    if (status==='paid') DB.add('activities', {id:DB.generateId('AC'), title:`Fee received from ${data.studentName}`, time:'Just now', icon:'money-bill', color:'#1a56db'});
+    showToast('Fee record added!', 'success');
+  }
+  closeModal('feeModal');
+  renderFeesPage();
+}
+
+function markPaid(id) {
+  const fee = DB.findOne('fees', f=>f.id===id);
+  if (!fee) return;
+  DB.update('fees', id, { status:'paid', paidDate: today(), receipt: generateReceiptNo() });
+  DB.add('activities', {id:DB.generateId('AC'), title:`Fee received from ${fee.studentName}`, time:'Just now', icon:'money-bill', color:'#1a56db'});
+  showToast('Payment recorded successfully!', 'success');
+  renderFeesPage();
+}
+
+function deleteFee(id, name) {
+  deleteRecord('fees', id, name + ' fee record', () => renderFeesPage());
+}
+
+function viewReceipt(id) {
+  const f = DB.findOne('fees', fee=>fee.id===id);
+  if (!f) return;
+  document.getElementById('receiptContent').innerHTML = `
+  <div style="text-align:center;margin-bottom:20px">
+    <img src="logo.jpg" style="width:60px;height:60px;border-radius:50%;object-fit:cover;margin-bottom:10px">
+    <h2 style="font-size:18px;color:#1a56db">Muslim Model School Khaddi</h2>
+    <p style="font-size:13px;color:var(--text-light)">Fee Payment Receipt</p>
+    <div style="border-top:2px dashed var(--border);margin:12px 0"></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+    <div><strong style="color:var(--text-light)">Receipt No.</strong><div style="font-weight:700">${f.receipt||'N/A'}</div></div>
+    <div><strong style="color:var(--text-light)">Payment Date</strong><div>${formatDate(f.paidDate)}</div></div>
+    <div><strong style="color:var(--text-light)">Student Name</strong><div>${f.studentName}</div></div>
+    <div><strong style="color:var(--text-light)">Class</strong><div>${f.class}</div></div>
+    <div><strong style="color:var(--text-light)">Month</strong><div>${f.month}</div></div>
+    <div><strong style="color:var(--text-light)">Category</strong><div>${f.category}</div></div>
+  </div>
+  <div style="background:var(--primary-light);border-radius:8px;padding:16px;text-align:center">
+    <div style="font-size:13px;color:var(--text-light)">Amount Paid</div>
+    <div style="font-size:28px;font-weight:800;color:var(--primary)">Rs.${f.amount.toLocaleString()}</div>
+  </div>
+  <div style="border-top:2px dashed var(--border);margin:16px 0;text-align:center;padding-top:12px">
+    <span class="badge badge-success"><i class="fas fa-check-circle"></i> PAID</span>
+    <p style="font-size:11px;color:var(--text-light);margin-top:8px">This is a computer-generated receipt. Valid without signature.</p>
+  </div>`;
+  openModal('receiptModal');
+}
+</script>
+</body>
+</html>
